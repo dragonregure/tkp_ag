@@ -26,6 +26,7 @@ class ItemFactory extends Factory
             'code' => strtoupper(fake()->bothify('ITM-####')),
             'name' => $catalog['name'],
             'price' => $catalog['price'],
+            'stock' => fake()->numberBetween(50, 200),
         ];
     }
 }

@@ -10,7 +10,7 @@ interface ItemRepositoryInterface
     public function dataTableResponse(): JsonResponse;
 
     /**
-     * @return array{results: list<array{id: int, text: string, price: float}>, pagination: array{more: bool}}
+     * @return array{results: list<array{id: int, text: string, price: float, stock: int}>, pagination: array{more: bool}}
      */
     public function select2Options(array $filters = [], int $perPage = 20): array;
 

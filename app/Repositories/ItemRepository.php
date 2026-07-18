@@ -19,6 +19,7 @@ class ItemRepository implements ItemRepositoryInterface
     {
         return DataTables::eloquent($this->dataTableQuery())
             ->editColumn('price', fn (Item $item): string => number_format((float) $item->price, 0, ',', '.'))
+            ->editColumn('stock', fn (Item $item): string => number_format((int) $item->stock, 0, ',', '.'))
             ->addColumn('image', fn (Item $item): string => view('items.partials.image', compact('item'))->render())
             ->addColumn('actions', fn (Item $item): string => view('items.partials.table-actions', compact('item'))->render())
             ->rawColumns(['image', 'actions'])
@@ -38,7 +39,7 @@ class ItemRepository implements ItemRepositoryInterface
             })
             ->orderBy('code')
             ->orderBy('name')
-            ->paginate(min($perPage, 50), ['id', 'code', 'name', 'price'], 'page', max($page, 1));
+            ->paginate(min($perPage, 50), ['id', 'code', 'name', 'price', 'stock'], 'page', max($page, 1));
 
         return [
             'results' => $items->getCollection()
@@ -46,6 +47,7 @@ class ItemRepository implements ItemRepositoryInterface
                     'id' => (int) $item->id,
                     'text' => $item->code . ' - ' . $item->name,
                     'price' => (float) $item->price,
+                    'stock' => (int) $item->stock,
                 ])
                 ->values()
                 ->all(),

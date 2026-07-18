@@ -11,6 +11,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class DemoSalesSeeder extends Seeder
 {
@@ -21,6 +22,8 @@ class DemoSalesSeeder extends Seeder
     public function run(): void
     {
         DB::transaction(function (): void {
+            $this->restoreDemoSaleStock();
+
             Payment::query()
                 ->where('code', 'like', self::PAYMENT_PREFIX . '%')
                 ->delete();
@@ -73,6 +76,10 @@ class DemoSalesSeeder extends Seeder
             $price = (float) $item->price;
             $total = $qty * $price;
 
+            if ((int) $item->stock < $qty) {
+                throw new RuntimeException('Stok item demo tidak mencukupi untuk membuat penjualan demo.');
+            }
+
             $sale->items()->create([
                 'item_id' => $item->id,
                 'item_code' => $item->code,
@@ -82,10 +89,28 @@ class DemoSalesSeeder extends Seeder
                 'total_price' => $total,
             ]);
 
+            $item->forceFill(['stock' => (int) $item->stock - $qty])->save();
             $subtotal += $total;
         }
 
         return $subtotal;
+    }
+
+    private function restoreDemoSaleStock(): void
+    {
+        $quantities = DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->where('sales.code', 'like', self::SALE_PREFIX . '%')
+            ->select('sale_items.item_id', DB::raw('SUM(sale_items.qty) as qty'))
+            ->groupBy('sale_items.item_id')
+            ->orderBy('sale_items.item_id')
+            ->get();
+
+        foreach ($quantities as $quantity) {
+            Item::query()
+                ->whereKey((int) $quantity->item_id)
+                ->increment('stock', (int) $quantity->qty);
+        }
     }
 
     /**

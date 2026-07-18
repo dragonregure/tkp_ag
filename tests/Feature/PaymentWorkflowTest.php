@@ -54,6 +54,99 @@ class PaymentWorkflowTest extends TestCase
         $this->assertEquals(0, (float) $sale->remaining_amount);
     }
 
+    public function test_sale_creation_reduces_item_stock_regardless_of_payment_status(): void
+    {
+        $user = User::factory()->create();
+        $item = Item::factory()->create(['price' => 100000, 'stock' => 5]);
+        $sales = app(SaleRepositoryInterface::class);
+
+        $sale = $sales->createWithItems([
+            'sale_date' => now()->toDateString(),
+            'items' => [
+                ['item_id' => $item->id, 'qty' => 2, 'price' => 100000],
+            ],
+        ], $user->id);
+
+        $this->assertSame(SaleStatus::Unpaid, $sale->status);
+        $this->assertSame(3, $item->refresh()->stock);
+    }
+
+    public function test_sale_creation_cannot_reduce_item_stock_below_zero(): void
+    {
+        $user = User::factory()->create();
+        $item = Item::factory()->create(['price' => 100000, 'stock' => 1]);
+        $sales = app(SaleRepositoryInterface::class);
+
+        try {
+            $sales->createWithItems([
+                'sale_date' => now()->toDateString(),
+                'items' => [
+                    ['item_id' => $item->id, 'qty' => 2, 'price' => 100000],
+                ],
+            ], $user->id);
+
+            $this->fail('Expected stock validation to fail.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(1, $item->refresh()->stock);
+            $this->assertSame(0, Sale::query()->count());
+            $this->assertArrayHasKey('items', $exception->errors());
+        }
+    }
+
+    public function test_sale_update_adjusts_item_stock_by_quantity_difference(): void
+    {
+        $user = User::factory()->create();
+        $item = Item::factory()->create(['price' => 100000, 'stock' => 10]);
+        $sales = app(SaleRepositoryInterface::class);
+
+        $sale = $sales->createWithItems([
+            'sale_date' => now()->toDateString(),
+            'items' => [
+                ['item_id' => $item->id, 'qty' => 2, 'price' => 100000],
+            ],
+        ], $user->id);
+
+        $this->assertSame(8, $item->refresh()->stock);
+
+        $sales->updateWithItems($sale->refresh(), [
+            'sale_date' => now()->toDateString(),
+            'items' => [
+                ['item_id' => $item->id, 'qty' => 4, 'price' => 100000],
+            ],
+        ]);
+
+        $this->assertSame(6, $item->refresh()->stock);
+
+        $sales->updateWithItems($sale->refresh(), [
+            'sale_date' => now()->toDateString(),
+            'items' => [
+                ['item_id' => $item->id, 'qty' => 1, 'price' => 100000],
+            ],
+        ]);
+
+        $this->assertSame(9, $item->refresh()->stock);
+    }
+
+    public function test_sale_delete_restores_item_stock(): void
+    {
+        $user = User::factory()->create();
+        $item = Item::factory()->create(['price' => 100000, 'stock' => 5]);
+        $sales = app(SaleRepositoryInterface::class);
+
+        $sale = $sales->createWithItems([
+            'sale_date' => now()->toDateString(),
+            'items' => [
+                ['item_id' => $item->id, 'qty' => 2, 'price' => 100000],
+            ],
+        ], $user->id);
+
+        $this->assertSame(3, $item->refresh()->stock);
+
+        $sales->delete($sale->refresh());
+
+        $this->assertSame(5, $item->refresh()->stock);
+    }
+
     public function test_payment_cannot_exceed_sale_total(): void
     {
         $user = User::factory()->create();

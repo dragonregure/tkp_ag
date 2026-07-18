@@ -9,6 +9,7 @@ use App\Models\Item;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -74,7 +75,11 @@ class SaleRepository implements SaleRepositoryInterface
                 'created_by' => $userId,
             ]);
 
-            $subtotal = $this->syncItems($sale, $data['items']);
+            $requestedQuantities = $this->aggregateQuantities($data['items']);
+            $lockedItems = $this->lockItems(array_keys($requestedQuantities));
+            $this->assertStockIsAvailable($lockedItems, $requestedQuantities);
+            $this->applyStockDifferences($lockedItems, $requestedQuantities);
+            $subtotal = $this->syncItems($sale, $data['items'], $lockedItems);
             $sale->update([
                 'subtotal' => $subtotal,
                 'paid_amount' => 0,
@@ -82,7 +87,7 @@ class SaleRepository implements SaleRepositoryInterface
             ]);
 
             return $sale->refresh()->load('items.item');
-        });
+        }, 3);
     }
 
     public function updateWithItems(Sale $sale, array $data): Sale
@@ -92,8 +97,21 @@ class SaleRepository implements SaleRepositoryInterface
         }
 
         return DB::transaction(function () use ($sale, $data): Sale {
+            $sale = Sale::query()->lockForUpdate()->findOrFail($sale->id);
+
+            if ($sale->isPaid()) {
+                throw new RuntimeException('Penjualan yang sudah dibayar tidak bisa diedit.');
+            }
+
+            $currentQuantities = $this->saleItemQuantities($sale);
+            $requestedQuantities = $this->aggregateQuantities($data['items']);
+            $stockDifferences = $this->stockDifferences($requestedQuantities, $currentQuantities);
+            $lockedItems = $this->lockItems(array_keys($currentQuantities + $requestedQuantities));
+            $this->assertStockIsAvailable($lockedItems, $stockDifferences);
+
             $sale->update(['sale_date' => $data['sale_date']]);
-            $subtotal = $this->syncItems($sale, $data['items']);
+            $this->applyStockDifferences($lockedItems, $stockDifferences);
+            $subtotal = $this->syncItems($sale, $data['items'], $lockedItems);
             $paidAmount = (float) $sale->payments()->sum('amount');
 
             if ($paidAmount > $subtotal) {
@@ -105,7 +123,7 @@ class SaleRepository implements SaleRepositoryInterface
             $sale->update(['subtotal' => $subtotal]);
 
             return $this->recalculatePaymentStatus($sale)->load('items.item', 'payments');
-        });
+        }, 3);
     }
 
     public function delete(Sale $sale): void
@@ -115,8 +133,19 @@ class SaleRepository implements SaleRepositoryInterface
         }
 
         DB::transaction(function () use ($sale): void {
+            $sale = Sale::query()->lockForUpdate()->findOrFail($sale->id);
+
+            if ($sale->isPaid()) {
+                throw new RuntimeException('Penjualan yang sudah dibayar tidak bisa dihapus.');
+            }
+
+            $currentQuantities = $this->saleItemQuantities($sale);
+            $stockDifferences = $this->stockDifferences([], $currentQuantities);
+            $lockedItems = $this->lockItems(array_keys($currentQuantities));
+            $this->applyStockDifferences($lockedItems, $stockDifferences);
+
             $sale->delete();
-        });
+        }, 3);
     }
 
     public function recalculatePaymentStatus(Sale $sale): Sale
@@ -173,16 +202,25 @@ class SaleRepository implements SaleRepositoryInterface
         ];
     }
 
-    private function syncItems(Sale $sale, array $rows): float
+    /**
+     * @param  EloquentCollection<int, Item>  $items
+     */
+    private function syncItems(Sale $sale, array $rows, EloquentCollection $items): float
     {
         $sale->items()->delete();
         $subtotal = 0.0;
 
         foreach ($rows as $row) {
-            $item = Item::query()->findOrFail($row['item_id']);
+            $item = $items->get((int) $row['item_id']);
             $qty = (int) $row['qty'];
             $price = (float) $row['price'];
             $total = $qty * $price;
+
+            if (!$item instanceof Item) {
+                throw ValidationException::withMessages([
+                    'items' => 'Item yang dipilih tidak ditemukan.',
+                ]);
+            }
 
             $sale->items()->create([
                 'item_id' => $item->id,
@@ -197,5 +235,152 @@ class SaleRepository implements SaleRepositoryInterface
         }
 
         return $subtotal;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function aggregateQuantities(array $rows): array
+    {
+        $quantities = [];
+
+        foreach ($rows as $row) {
+            $itemId = (int) $row['item_id'];
+            $quantities[$itemId] = ($quantities[$itemId] ?? 0) + (int) $row['qty'];
+        }
+
+        ksort($quantities);
+
+        return $quantities;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function saleItemQuantities(Sale $sale): array
+    {
+        $quantities = [];
+        $rows = $sale->items()
+            ->select('item_id', DB::raw('SUM(qty) as qty'))
+            ->groupBy('item_id')
+            ->pluck('qty', 'item_id');
+
+        foreach ($rows as $itemId => $qty) {
+            $quantities[(int) $itemId] = (int) $qty;
+        }
+
+        ksort($quantities);
+
+        return $quantities;
+    }
+
+    /**
+     * Positive values reduce stock; negative values restore stock.
+     *
+     * @param  array<int, int>  $requestedQuantities
+     * @param  array<int, int>  $currentQuantities
+     * @return array<int, int>
+     */
+    private function stockDifferences(array $requestedQuantities, array $currentQuantities): array
+    {
+        $differences = [];
+        $itemIds = array_unique([...array_keys($requestedQuantities), ...array_keys($currentQuantities)]);
+        sort($itemIds);
+
+        foreach ($itemIds as $itemId) {
+            $difference = ($requestedQuantities[$itemId] ?? 0) - ($currentQuantities[$itemId] ?? 0);
+
+            if ($difference !== 0) {
+                $differences[(int) $itemId] = $difference;
+            }
+        }
+
+        return $differences;
+    }
+
+    /**
+     * Locks item rows in ascending id order so concurrent sales acquire stock locks consistently.
+     *
+     * @param  array<int, int|string>  $itemIds
+     * @return EloquentCollection<int, Item>
+     */
+    private function lockItems(array $itemIds): EloquentCollection
+    {
+        $ids = array_values(array_unique(array_map('intval', $itemIds)));
+        sort($ids);
+
+        if ($ids === []) {
+            return new EloquentCollection();
+        }
+
+        return Item::query()
+            ->whereKey($ids)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+    }
+
+    /**
+     * @param  EloquentCollection<int, Item>  $items
+     * @param  array<int, int>  $stockDifferences
+     */
+    private function assertStockIsAvailable(EloquentCollection $items, array $stockDifferences): void
+    {
+        foreach ($stockDifferences as $itemId => $quantity) {
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $item = $items->get($itemId);
+
+            if (!$item instanceof Item) {
+                throw ValidationException::withMessages([
+                    'items' => 'Item yang dipilih tidak ditemukan.',
+                ]);
+            }
+
+            if ((int) $item->stock < $quantity) {
+                throw ValidationException::withMessages([
+                    'items' => sprintf(
+                        'Stok %s tidak mencukupi. Tersedia %d, diminta %d.',
+                        $item->name,
+                        (int) $item->stock,
+                        $quantity
+                    ),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  EloquentCollection<int, Item>  $items
+     * @param  array<int, int>  $stockDifferences
+     */
+    private function applyStockDifferences(EloquentCollection $items, array $stockDifferences): void
+    {
+        foreach ($stockDifferences as $itemId => $quantity) {
+            $item = $items->get($itemId);
+
+            if (!$item instanceof Item) {
+                throw ValidationException::withMessages([
+                    'items' => 'Item yang dipilih tidak ditemukan.',
+                ]);
+            }
+
+            $newStock = (int) $item->stock - $quantity;
+
+            if ($newStock < 0) {
+                throw ValidationException::withMessages([
+                    'items' => sprintf(
+                        'Stok %s tidak boleh kurang dari 0.',
+                        $item->name
+                    ),
+                ]);
+            }
+
+            $item->forceFill(['stock' => $newStock])->save();
+            $item->setAttribute('stock', $newStock);
+        }
     }
 }

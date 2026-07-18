@@ -21,6 +21,7 @@
                         <th>Kode</th>
                         <th>Nama</th>
                         <th>Harga</th>
+                        <th>Stock</th>
                         <th>Aksi</th>
                     </tr>
                 </thead>
@@ -41,6 +42,7 @@
                 { data: 'code', name: 'code' },
                 { data: 'name', name: 'name' },
                 { data: 'price', name: 'price' },
+                { data: 'stock', name: 'stock' },
                 { data: 'actions', name: 'actions', orderable: false, searchable: false }
             ]
         });
