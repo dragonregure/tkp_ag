@@ -2,13 +2,19 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Item;
+use App\Models\Sale;
 use Illuminate\Foundation\Http\FormRequest;
 
 class Select2Request extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return match ($this->route()?->getName()) {
+            'items.select2' => $this->user()?->can('viewAny', Item::class) ?? false,
+            'sales.select2' => $this->user()?->can('viewAny', Sale::class) ?? false,
+            default => false,
+        };
     }
 
     /**
