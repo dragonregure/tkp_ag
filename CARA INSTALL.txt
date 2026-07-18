@@ -1,0 +1,205 @@
+CARA INSTALL APLIKASI TKP AG
+================================
+
+Dokumen ini menjelaskan cara menjalankan aplikasi TKP AG dari file ZIP.
+Cara yang disarankan adalah memakai Docker Desktop karena lebih mudah dan
+tidak perlu memasang PHP, Composer, MySQL, dan Redis satu per satu.
+
+
+DAFTAR ISI
+----------
+1. Persiapan
+2. Cara install dengan Docker Desktop
+3. Cara membuka aplikasi
+4. Akun login awal
+5. Cara menghentikan dan menjalankan ulang aplikasi
+6. Masalah yang sering terjadi
+7. Alternatif install manual untuk tim teknis
+
+
+1. PERSIAPAN
+------------
+Yang perlu disiapkan:
+
+1. Komputer Windows 10/11, macOS, atau Linux.
+2. Koneksi internet untuk proses pertama kali install.
+3. Docker Desktop.
+
+Download Docker Desktop:
+https://www.docker.com/products/docker-desktop/
+
+Setelah Docker Desktop terpasang:
+
+1. Buka Docker Desktop.
+2. Tunggu sampai status Docker Desktop siap/running.
+3. Extract file ZIP aplikasi TKP AG ke folder yang mudah ditemukan, misalnya:
+   C:\TKP-AG
+
+
+2. CARA INSTALL DENGAN DOCKER DESKTOP
+-------------------------------------
+Langkah berikut menggunakan Windows sebagai contoh.
+
+1. Buka folder hasil extract ZIP.
+2. Klik kanan di area kosong folder, lalu pilih "Open in Terminal".
+   Jika pilihan itu tidak ada, buka Command Prompt atau PowerShell, lalu masuk
+   ke folder aplikasi dengan perintah seperti ini:
+
+   cd C:\TKP-AG
+
+3. Jalankan perintah berikut:
+
+   docker compose up --build
+
+4. Tunggu proses selesai sampai muncul pesan bahwa server Laravel berjalan.
+   Pada proses pertama, Docker akan mengunduh kebutuhan aplikasi. Ini bisa
+   memakan waktu beberapa menit tergantung koneksi internet.
+
+Catatan:
+
+- Database, data awal, dan link penyimpanan akan disiapkan otomatis.
+- Jangan tutup Terminal selama aplikasi sedang digunakan.
+
+
+3. CARA MEMBUKA APLIKASI
+------------------------
+Setelah proses install berjalan, buka browser lalu akses:
+
+http://localhost:8000
+
+Halaman dokumentasi API/Swagger tersedia di:
+
+http://localhost:8000/api/documentation
+
+phpMyAdmin untuk melihat database tersedia di:
+
+http://localhost:8080
+
+Mailpit untuk melihat email lokal tersedia di:
+
+http://localhost:8025
+
+
+4. AKUN LOGIN AWAL
+------------------
+Gunakan akun berikut untuk masuk pertama kali:
+
+Email    : admin@example.com
+Password : password
+
+Setelah berhasil masuk, disarankan mengganti password bila aplikasi akan
+dipakai untuk demo atau pelaporan.
+
+
+5. CARA MENGHENTIKAN DAN MENJALANKAN ULANG APLIKASI
+----------------------------------------------------
+Untuk menghentikan aplikasi:
+
+1. Buka Terminal yang menjalankan aplikasi.
+2. Tekan Ctrl + C.
+
+Untuk menjalankan ulang aplikasi:
+
+1. Buka folder aplikasi.
+2. Jalankan:
+
+   docker compose up
+
+Jika ingin menjalankan aplikasi di background:
+
+docker compose up -d
+
+Untuk menghentikan aplikasi yang berjalan di background:
+
+docker compose stop
+
+
+6. MASALAH YANG SERING TERJADI
+------------------------------
+1. Docker tidak dikenali
+
+   Pastikan Docker Desktop sudah terpasang dan sudah dibuka. Setelah install
+   Docker, tutup lalu buka ulang Terminal.
+
+2. Port sudah digunakan
+
+   Aplikasi memakai port berikut:
+
+   - 8000 untuk aplikasi
+   - 8080 untuk phpMyAdmin
+   - 8025 untuk Mailpit
+   - 3307 untuk MySQL lokal
+   - 6379 untuk Redis
+
+   Jika salah satu port bentrok, hentikan aplikasi lain yang memakai port
+   tersebut, atau minta bantuan tim teknis untuk mengganti port di file .env.
+
+3. Proses pertama lama
+
+   Ini normal karena Docker mengunduh image dan Composer memasang dependency.
+   Pastikan koneksi internet stabil.
+
+4. Halaman belum bisa dibuka
+
+   Tunggu beberapa saat, lalu refresh browser. Jika masih belum bisa, cek
+   Terminal apakah ada pesan error.
+
+5. Ingin mengulang database dari awal
+
+   Perintah ini akan menghapus data database lokal Docker dan membuat ulang
+   data demo:
+
+   docker compose down -v
+   docker compose up --build
+
+   PERHATIAN: semua data lokal yang sudah dibuat di aplikasi akan hilang.
+
+
+7. ALTERNATIF INSTALL MANUAL UNTUK TIM TEKNIS
+---------------------------------------------
+Gunakan cara ini hanya bila tidak memakai Docker.
+
+Kebutuhan:
+
+- PHP 8.3 atau lebih baru
+- Composer
+- MySQL
+- Redis
+- Node.js dan npm bila perlu membangun asset frontend
+
+Langkah:
+
+1. Masuk ke folder aplikasi:
+
+   cd C:\TKP-AG
+
+2. Install dependency PHP:
+
+   composer install
+
+3. Salin file environment:
+
+   copy .env.example .env
+
+4. Sesuaikan konfigurasi database di file .env.
+
+5. Buat application key:
+
+   php artisan key:generate
+
+6. Jalankan migrasi dan seeder:
+
+   php artisan migrate --seed
+
+7. Buat storage link:
+
+   php artisan storage:link
+
+8. Jalankan aplikasi:
+
+   php artisan serve
+
+9. Buka aplikasi:
+
+   http://localhost:8000
+
