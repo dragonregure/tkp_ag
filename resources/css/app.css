@@ -1,0 +1,44 @@
+body {
+    font-size: 0.95rem;
+}
+
+.brand-image {
+    width: 2rem;
+    height: 2rem;
+    background: #0d6efd;
+}
+
+.item-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.table-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.table-actions form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.btn-icon-action {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: 6px !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.table td,
+.table th {
+    vertical-align: middle;
+}

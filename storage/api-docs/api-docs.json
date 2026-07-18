@@ -1,0 +1,94 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "TKP AG API",
+        "description": "Internal API documentation for the TKP AG Laravel sales recording application.",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/health": {
+            "get": {
+                "tags": [
+                    "System"
+                ],
+                "summary": "Health check",
+                "operationId": "health",
+                "responses": {
+                    "200": {
+                        "description": "Application is healthy",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "ok"
+                                        },
+                                        "app": {
+                                            "type": "string",
+                                            "example": "TKP AG"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "servers": [
+                    {
+                        "url": "/api/v1",
+                        "description": "API v1"
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "SaleStatus": {
+                "type": "string",
+                "example": "partially_paid",
+                "enum": [
+                    "unpaid",
+                    "partially_paid",
+                    "paid"
+                ]
+            },
+            "Sale": {
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "example": "SL-20260714-0001"
+                    },
+                    "sale_date": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/SaleStatus"
+                    },
+                    "subtotal": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "paid_amount": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "remaining_amount": {
+                        "type": "number",
+                        "format": "float"
+                    }
+                },
+                "type": "object"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "System",
+            "description": "System"
+        }
+    ]
+}

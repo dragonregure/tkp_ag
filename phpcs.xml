@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<ruleset name="TKP AG">
+    <description>PHPCS rules for TKP AG Laravel application.</description>
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="warning-severity" value="0"/>
+    <arg value="p"/>
+    <file>app</file>
+    <file>database</file>
+    <file>routes</file>
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/storage/*</exclude-pattern>
+    <rule ref="PSR12"/>
+</ruleset>
